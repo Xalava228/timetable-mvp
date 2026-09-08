@@ -41,7 +41,7 @@ export default function Home(){
  function remove(s:Source){URL.revokeObjectURL(s.url);setSources(prev=>prev.filter(x=>x.id!==s.id));invalidate()}
  async function download(){
   setError('');setSuccess('');setBusy('Собираю Excel');
-  try{const response=await fetch('/template.xlsx');if(!response.ok)throw Error('Не удалось загрузить шаблон Excel. Попробуй снова.');
+  try{const response=await fetch('./template.xlsx');if(!response.ok)throw Error('Не удалось загрузить шаблон Excel. Попробуй снова.');
    const out=exportSchedule(await response.arrayBuffer(),selected,{start,firstWeek,timeMode,aliases});
    const url=URL.createObjectURL(new Blob([new Uint8Array(out)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=`Расписание — ${teacher}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);setSuccess('Excel готов. Проверь загрузки браузера.');
   }catch(e){setError(e instanceof Error?e.message:'Не удалось собрать Excel.')}finally{setBusy('')}
