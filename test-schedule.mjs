@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { unzipSync, strFromU8 } from 'fflate';
 import { readPdf, deduplicate, conflicts, parsePage } from './lib/schedule.mjs';
-import { exportSchedule, exportSchedules } from './lib/export.mjs';
+import { exportSchedule } from './lib/export.mjs';
 const input = process.argv[2];
 if (!input) throw Error('Pass the source PDF as first argument.');
 const r = await readPdf(fs.readFileSync(input), 'source.pdf');
@@ -48,23 +48,6 @@ assert.ok(conflicts([bardin[0], { ...bardin[0], group: '999' }]).length);
 assert.throws(() => parsePage([], [], 842, 'scan.pdf'), /Часы/);
 const original = fs.readFileSync('public/template.xlsx'),
   result = exportSchedule(original, bardin);
-const banin = r.lessons.filter((l) => l.teacher === 'Банин В.В.');
-const bundle = unzipSync(
-  exportSchedules(
-    original,
-    [...bardin, ...banin],
-    ['Бардин Д.П.', 'Банин В.В.'],
-  ),
-);
-assert.deepEqual(Object.keys(bundle).sort(), [
-  'Расписание — Банин В.В..xlsx',
-  'Расписание — Бардин Д.П..xlsx',
-]);
-for (const file of Object.values(bundle))
-  assert.equal(
-    Object.keys(unzipSync(file)).length,
-    Object.keys(unzipSync(original)).length,
-  );
 const a = unzipSync(original),
   b = unzipSync(result);
 assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort());
@@ -90,6 +73,25 @@ assert.throws(
   () => exportSchedule(original, [bardin[0], { ...bardin[0], group: '999' }]),
   /несколько/,
 );
+const combined = exportSchedule(
+  original,
+  [
+    bardin[0],
+    {
+      ...bardin[0],
+      teacher: 'Иванов И.И.',
+      group: '999',
+      subject: 'Другой предмет',
+    },
+  ],
+  { includeTeachers: true },
+);
+const combinedSheet = strFromU8(
+  unzipSync(combined)['xl/worksheets/sheet1.xml'],
+);
+assert.ok(combinedSheet.includes('Бардин'));
+assert.ok(combinedSheet.includes('Иванов'));
+assert.ok(combinedSheet.includes('999'));
 const sheet1 = strFromU8(b['xl/worksheets/sheet1.xml']);
 assert.match(sheet1, /<c r="D13"[^>]*>[\s\S]*?251/);
 assert.match(sheet1, /<c r="D21"[^>]*>[\s\S]*?251К/);

@@ -28,7 +28,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { readPdf, deduplicate, conflicts, DAYS } from '@/lib/schedule.mjs';
-import { exportSchedule, exportSchedules } from '@/lib/export.mjs';
+import { exportSchedule } from '@/lib/export.mjs';
 import { registerScheduleReader } from '@/lib/webmcp';
 
 type Lesson = {
@@ -226,28 +226,29 @@ export default function Home() {
       const response = await fetch('./template.xlsx');
       if (!response.ok)
         throw Error('Не удалось загрузить шаблон Excel. Попробуй снова.');
-      const template = await response.arrayBuffer(),
-        options = { start, firstWeek, timeMode, aliases };
       const many = selectedTeachers.length > 1,
-        out = many
-          ? exportSchedules(template, selected, selectedTeachers, options)
-          : exportSchedule(template, selected, options);
-      const type = many
-        ? 'application/zip'
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        out = exportSchedule(await response.arrayBuffer(), selected, {
+          start,
+          firstWeek,
+          timeMode,
+          aliases,
+          includeTeachers: many,
+        });
       const url = URL.createObjectURL(
-        new Blob([new Uint8Array(out)], { type }),
+        new Blob([new Uint8Array(out)], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
       );
       const a = document.createElement('a');
       a.href = url;
       a.download = many
-        ? `Расписания — ${selectedTeachers.length} преподавателя.zip`
+        ? `Общее расписание — ${selectedTeachers.length} преподавателя.xlsx`
         : `Расписание — ${selectedTeachers[0]}.xlsx`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       setSuccess(
         many
-          ? 'Архив готов: внутри отдельный Excel для каждого преподавателя.'
+          ? 'Excel готов. У каждого занятия указана фамилия преподавателя.'
           : 'Excel готов. Проверь загрузки браузера.',
       );
     } catch (e) {
@@ -383,8 +384,8 @@ export default function Home() {
                 </div>
               )}
               <span className="muted">
-                Для нескольких преподавателей скачается ZIP с отдельным Excel
-                для каждого.
+                Занятия выбранных преподавателей попадут в один Excel с пометкой
+                фамилии.
               </span>
             </div>
             {!teachers.length && (
@@ -685,14 +686,13 @@ export default function Home() {
                 !start
               }
             >
-              <Download size={19} />{' '}
-              {selectedTeachers.length > 1 ? 'Скачать ZIP' : 'Скачать Excel'}
+              <Download size={19} /> Скачать Excel
             </button>
           </div>
           <p className="muted">
-            Для каждого преподавателя создаётся отдельный Excel с тремя листами
-            исходного шаблона. Кабинеты и ссылки на источники в Excel не
-            добавляются.
+            В одном Excel объединяются занятия выбранных преподавателей. Фамилия
+            указывается после названия предмета. Кабинеты и ссылки на источники
+            не добавляются.
           </p>
         </section>
       )}
