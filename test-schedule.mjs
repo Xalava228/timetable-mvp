@@ -1,42 +1,129 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-import {unzipSync,strFromU8} from 'fflate';
-import {readPdf,deduplicate,conflicts,parsePage} from './lib/schedule.mjs';
-import {exportSchedule} from './lib/export.mjs';
-const input=process.argv[2];
-if(!input)throw Error('Pass the source PDF as first argument.');
-const r=await readPdf(fs.readFileSync(input),'source.pdf');
-assert.deepEqual(r.groups,['251','251К','271','291','291К','206']);
-assert.equal(r.warnings.length,0);
-const bardin=r.lessons.filter(l=>l.teacher==='Бардин Д.П.');
-assert.equal(bardin.length,9);
-assert.deepEqual(bardin.map(l=>[l.group,l.day,l.slot,l.week,l.subgroup]),[
- ['251',1,2,'odd',''],['251',1,3,'even',''],['251',1,4,'odd',''],['251',1,4,'even',''],['251',2,2,'even',''],['251К',2,3,'odd',''],['251',2,4,'odd',''],['251К',2,4,'even','1'],['251К',3,2,'odd','2']]);
-const common=r.lessons.find(l=>l.teacher==='Банин В.В.'&&l.day===3&&l.group==='271'&&l.slot===2);
-assert.equal(common.week,'both');
-const sameHalf=r.lessons.filter(l=>l.group==='251К'&&l.day===3&&l.slot===2&&l.week==='odd');
-assert.deepEqual(sameHalf.map(l=>[l.teacher,l.subgroup]),[['Бояркина В.П.','1'],['Бардин Д.П.','2']]);
-assert.equal(deduplicate([...bardin,...bardin]).length,9);
-assert.equal(conflicts(bardin).length,0);
-assert.ok(conflicts([bardin[0],{...bardin[0],group:'999'}]).length);
-assert.throws(()=>parsePage([],[],842,'scan.pdf'),/Часы/);
-const original=fs.readFileSync('public/template.xlsx'),result=exportSchedule(original,bardin);
-const a=unzipSync(original),b=unzipSync(result);
-assert.deepEqual(Object.keys(a).sort(),Object.keys(b).sort());
-const changed=Object.keys(a).filter(k=>!Buffer.from(a[k]).equals(Buffer.from(b[k])));
-assert.deepEqual(changed.sort(),['xl/worksheets/sheet1.xml','xl/worksheets/sheet2.xml','xl/worksheets/sheet3.xml']);
-for(const key of changed){
- const before=strFromU8(a[key]),after=strFromU8(b[key]);
- const structure=x=>x.replace(/<c\b([^>]*?)(?:\/>|>[\s\S]*?<\/c>)/g,(_all,attr)=>'<c'+attr.replace(/\s+t="[^"]*"/g,'')+'/>');
- assert.equal(structure(before),structure(after),`${key}: layout preserved`);
+import { unzipSync, strFromU8 } from 'fflate';
+import { readPdf, deduplicate, conflicts, parsePage } from './lib/schedule.mjs';
+import { exportSchedule, exportSchedules } from './lib/export.mjs';
+const input = process.argv[2];
+if (!input) throw Error('Pass the source PDF as first argument.');
+const r = await readPdf(fs.readFileSync(input), 'source.pdf');
+assert.deepEqual(r.groups, ['251', '251К', '271', '291', '291К', '206']);
+assert.equal(r.warnings.length, 0);
+const bardin = r.lessons.filter((l) => l.teacher === 'Бардин Д.П.');
+assert.equal(bardin.length, 9);
+assert.deepEqual(
+  bardin.map((l) => [l.group, l.day, l.slot, l.week, l.subgroup]),
+  [
+    ['251', 1, 2, 'odd', ''],
+    ['251', 1, 3, 'even', ''],
+    ['251', 1, 4, 'odd', ''],
+    ['251', 1, 4, 'even', ''],
+    ['251', 2, 2, 'even', ''],
+    ['251К', 2, 3, 'odd', ''],
+    ['251', 2, 4, 'odd', ''],
+    ['251К', 2, 4, 'even', '1'],
+    ['251К', 3, 2, 'odd', '2'],
+  ],
+);
+const common = r.lessons.find(
+  (l) =>
+    l.teacher === 'Банин В.В.' &&
+    l.day === 3 &&
+    l.group === '271' &&
+    l.slot === 2,
+);
+assert.equal(common.week, 'both');
+const sameHalf = r.lessons.filter(
+  (l) => l.group === '251К' && l.day === 3 && l.slot === 2 && l.week === 'odd',
+);
+assert.deepEqual(
+  sameHalf.map((l) => [l.teacher, l.subgroup]),
+  [
+    ['Бояркина В.П.', '1'],
+    ['Бардин Д.П.', '2'],
+  ],
+);
+assert.equal(deduplicate([...bardin, ...bardin]).length, 9);
+assert.equal(conflicts(bardin).length, 0);
+assert.ok(conflicts([bardin[0], { ...bardin[0], group: '999' }]).length);
+assert.throws(() => parsePage([], [], 842, 'scan.pdf'), /Часы/);
+const original = fs.readFileSync('public/template.xlsx'),
+  result = exportSchedule(original, bardin);
+const banin = r.lessons.filter((l) => l.teacher === 'Банин В.В.');
+const bundle = unzipSync(
+  exportSchedules(
+    original,
+    [...bardin, ...banin],
+    ['Бардин Д.П.', 'Банин В.В.'],
+  ),
+);
+assert.deepEqual(Object.keys(bundle).sort(), [
+  'Расписание — Банин В.В..xlsx',
+  'Расписание — Бардин Д.П..xlsx',
+]);
+for (const file of Object.values(bundle))
+  assert.equal(
+    Object.keys(unzipSync(file)).length,
+    Object.keys(unzipSync(original)).length,
+  );
+const a = unzipSync(original),
+  b = unzipSync(result);
+assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort());
+const changed = Object.keys(a).filter(
+  (k) => !Buffer.from(a[k]).equals(Buffer.from(b[k])),
+);
+assert.deepEqual(changed.sort(), [
+  'xl/worksheets/sheet1.xml',
+  'xl/worksheets/sheet2.xml',
+  'xl/worksheets/sheet3.xml',
+]);
+for (const key of changed) {
+  const before = strFromU8(a[key]),
+    after = strFromU8(b[key]);
+  const structure = (x) =>
+    x.replace(
+      /<c\b([^>]*?)(?:\/>|>[\s\S]*?<\/c>)/g,
+      (_all, attr) => '<c' + attr.replace(/\s+t="[^"]*"/g, '') + '/>',
+    );
+  assert.equal(structure(before), structure(after), `${key}: layout preserved`);
 }
-assert.throws(()=>exportSchedule(original,[bardin[0],{...bardin[0],group:'999'}]),/несколько/);
-const sheet1=strFromU8(b['xl/worksheets/sheet1.xml']);
-assert.match(sheet1,/<c r="D13"[^>]*>[\s\S]*?251/);
-assert.match(sheet1,/<c r="D21"[^>]*>[\s\S]*?251К/);
-const sheet2=strFromU8(b['xl/worksheets/sheet2.xml']);
-assert.match(sheet2,/<c r="D22"[^>]*>[\s\S]*?251К\/1/);
-const malicious=exportSchedule(original,bardin,{aliases:{[bardin[0].subject]:'=HYPERLINK("https://example.test") & <x>'}});
-assert.ok(strFromU8(unzipSync(malicious)['xl/worksheets/sheet1.xml']).includes('&amp; &lt;x&gt;'));
-fs.mkdirSync('../../work',{recursive:true});fs.writeFileSync('../../work/mvp-bardin.xlsx',result);
-console.log(JSON.stringify({status:'passed',parsed:r.lessons.length,teachers:new Set(r.lessons.map(l=>l.teacher)).size,checkedBardin:bardin.length,changedParts:changed,templateLayout:'identical',testCases:['upper odd / lower even','unequal week heights','subgroups within one week','both weeks','group suffix К','duplicate uploads','conflicting lessons','unsupported PDF','XML escaping','template structure']}));
+assert.throws(
+  () => exportSchedule(original, [bardin[0], { ...bardin[0], group: '999' }]),
+  /несколько/,
+);
+const sheet1 = strFromU8(b['xl/worksheets/sheet1.xml']);
+assert.match(sheet1, /<c r="D13"[^>]*>[\s\S]*?251/);
+assert.match(sheet1, /<c r="D21"[^>]*>[\s\S]*?251К/);
+const sheet2 = strFromU8(b['xl/worksheets/sheet2.xml']);
+assert.match(sheet2, /<c r="D22"[^>]*>[\s\S]*?251К\/1/);
+const malicious = exportSchedule(original, bardin, {
+  aliases: { [bardin[0].subject]: '=HYPERLINK("https://example.test") & <x>' },
+});
+assert.ok(
+  strFromU8(unzipSync(malicious)['xl/worksheets/sheet1.xml']).includes(
+    '&amp; &lt;x&gt;',
+  ),
+);
+fs.mkdirSync('../../work', { recursive: true });
+fs.writeFileSync('../../work/mvp-bardin.xlsx', result);
+console.log(
+  JSON.stringify({
+    status: 'passed',
+    parsed: r.lessons.length,
+    teachers: new Set(r.lessons.map((l) => l.teacher)).size,
+    checkedBardin: bardin.length,
+    changedParts: changed,
+    templateLayout: 'identical',
+    testCases: [
+      'upper odd / lower even',
+      'unequal week heights',
+      'subgroups within one week',
+      'both weeks',
+      'group suffix К',
+      'duplicate uploads',
+      'conflicting lessons',
+      'unsupported PDF',
+      'XML escaping',
+      'template structure',
+    ],
+  }),
+);
